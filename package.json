@@ -1,0 +1,25 @@
+{
+  "name": "com.parchisicuri.net",
+  "version": "0.0.1",
+  "displayName": "ParchiSicuri",
+  "cordova": {
+    "platforms": [
+      "android"
+    ],
+    "plugins": {
+      "cordova-plugin-whitelist": {},
+      "cordova-plugin-file-transfer": {},
+      "cordova-plugin-file": {},
+      "cordova-plugin-network-information": {},
+      "cordova-plugin-dialogs": {}
+    }
+  },
+  "dependencies": {
+    "cordova-android": "~7.0.0",
+    "cordova-plugin-dialogs": "^2.0.1",
+    "cordova-plugin-file": "^5.0.0",
+    "cordova-plugin-file-transfer": "^1.7.0",
+    "cordova-plugin-network-information": "^2.0.1",
+    "cordova-plugin-whitelist": "1"
+  }
+}

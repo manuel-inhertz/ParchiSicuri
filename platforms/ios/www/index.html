@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html>
+ <head>
+  <meta charset="utf-8" />
+  <title></title>  
+  <meta name="format-detection" content="telephone=no" />
+  <meta name="viewport" content="user-scalable=no, initial-scale=1, maximum-scale=1, minimum-scale=1, width=device-width, height=device-height" />
+  <!-- Include the compiled Ratchet CSS -->
+  <link href="css/ratchet.css" rel="stylesheet">
+  <link href="css/bootstrap.css" rel="stylesheet">
+  <link href="css/mystyle.css" rel="stylesheet">
+  <!--<link href="css/ratchet-theme-ios.css" rel="stylesheet">-->
+  <!--<link href="css/ratchet-theme-android.css" rel="stylesheet">-->
+  <!-- Include the compiled Ratchet JS -->
+  <script src="js/jquery.min.js"></script>
+  <script src="js/ratchet.js"></script>
+
+  <script  src="cordova.js"></script>
+  <script  src="js/index.js"></script>
+
+  <!-- Per maggiori informazioni su Google Map e limitazioni, visita il link qui sotto -->
+  <!-- https://developers.google.com/maps/documentation/javascript/?hl=it -->
+  <!-- Usare la chiamata con la API_KEY a te associata tramite l'API Console https://code.google.com/apis/console -->
+
+  <script src="http://maps.googleapis.com/maps/api/js?sensor=false"></script>
+  <!-- <script src="http://maps.googleapis.com/maps/api/js?key=API_KEY"></script> -->
+  
+                           
+<script>
+
+var db, len, datiRiga, newid=0;
+var reteOk, idemdel;
+var note = {};
+
+// sostituisci a questo link quello della tua applicazione remota
+var mywebapp = "http://www.creareapp.com/testcorsistiphonegap/read.php";
+                            
+$(document).ready(function() {
+	
+                             
+//-------------------------------------------------
+// MANAGING PAGES			    
+//-------------------------------------------------
+			    
+$(".bar-tab a").on("touchend", function (e) {
+	e.preventDefault();
+	$(".bar-tab a").removeClass("active");
+	$(e.currentTarget).addClass("active");
+
+    var  fromPage = $("#pages .current"),
+    nextPage = $(e.currentTarget.hash);
+    var alink = $(e.currentTarget).attr("href");
+	cambioPagina(fromPage,nextPage,alink);
+});
+
+function cambioPagina(daPagina, aPagina, alink) {
+    daPagina.removeClass("current");
+    aPagina.addClass("current");
+    if (alink == '#page-segnalati') {
+    	caricoSegnalati();
+    }
+}
+
+$(".table-view").on("touchend", ".operazioni a", function (e) {
+	e.preventDefault();
+	var item = $(e.currentTarget).attr("href");
+	showConfirmCancellazione('You are about to delete this item', 'Ok', 'Cancel');
+	//cancelloRiga(item);
+});
+
+
+$(".table-view").on("touchend", ".upload a", function (e) {
+	e.preventDefault();
+	itemdel = $(e.currentTarget).attr("href");
+	if (checkConnessione()) {
+		var row = {};
+		row.immagine = $(item + " .slide img").attr("src");
+		row.titolo = $(item + " .slide .titolo").text();
+		row.lat = $(item + " .slide .lat").text();
+		row.lon = $(item + " .slide .long").text();
+		uploadRiga(row,item);
+	} else {
+		alert("No connection available");
+	}	
+	
+});
+
+//-------------------------------------------------
+// UPLOAD SETTINGS				    
+//-------------------------------------------------
+
+function uploadRiga(riga,item) {
+
+    tmpriga = item;
+    
+    $(item + " .slide").css("opacity", "0.2");
+    var imageURI = riga.immagine; 
+    
+	var options = new FileUploadOptions();
+	options.fileKey="allegato";
+	options.fileName=imageURI.substr(imageURI.lastIndexOf('/')+1);
+	options.mimeType="image/jpeg";          
+	options.params = riga;
+			
+	var ft = new FileTransfer();
+	ft.upload(imageURI, encodeURI(mywebapp), onUploadOk, onUploadError, options);               
+					
+	ft.onprogress = function(progressEvent) {
+		if (progressEvent.lengthComputable) {
+			var perc = Math.floor(progressEvent.loaded / progressEvent.total * 100);
+			$(item + " .status").html(perc + " % loaded...");
+		} else {
+			$(item + " .status").html('Loading ');
+		}
+	}; 
+	
+}
+
+function onUploadOk(r){
+	showToast("Ok, Photo sent succesfully", "2000");
+	aggiornaRiga(tmpriga);
+	$(tmpriga).remove();
+		
+}
+
+function onUploadError(err) {
+	$(tmpriga + " .slide").css("opacity", "1");
+	$(tmpriga + " .status").html("");
+	showAlert("Unable to send data");
+}
+
+function aggiornaRiga(iditem){
+	var idriga = iditem.replace('#item','');
+	db.transaction(		
+	  function (tx) {
+		tx.executeSql("UPDATE SEGNALAZIONI SET segnalata=? WHERE id = ?", ['1',idriga]);		  
+	  },
+	  onDbError,
+	  function () {
+
+	  }       
+	);
+} 
+
+
+//-------------------------------------------------
+// DB CREATIONS				    
+//-------------------------------------------------
+
+$(document).on("deviceready", onDeviceReady);
+
+function onDeviceReady () {
+	reteOk = checkConnessione();
+	aproDatabase();
+}
+
+function aproDatabase() {
+	db = window.openDatabase("PARCHISICURI", "1.0", "Database Parchi Sicuri", 200000);
+	db.transaction(creoDb, onDbError, onDbSuccess);		
+}
+
+function creoDb(tx) {
+	//tx.executeSql("DROP TABLE SEGNALAZIONI");	
+	tx.executeSql("CREATE TABLE IF NOT EXISTS SEGNALAZIONI (id INTEGER PRIMARY KEY AUTOINCREMENT, titolo, foto, datains, lat, lon, segnalata)");
+	//tx.executeSql("INSERT INTO SEGNALAZIONI (titolo, lat,lon) VALUES (?,?,?)", ['Titolo di test', '-', '-']);
+	tx.executeSql("SELECT * FROM SEGNALAZIONI WHERE segnalata=? ORDER By id DESC", ['0'], onSelectSuccess, onDbError);	
+}
+
+function onDbError(error) {
+	showAlert("Error database" + error.message);
+}
+
+function onDbSuccess() {
+	//alert("OK db Creato");
+}
+
+function onSelectSuccess(tx,dati) {	
+	len = dati.rows.length;
+	datiRiga = '';
+	if(len!=0) {
+		for(var i=0; i<len; i++){
+			buildRiga(dati.rows.item(i).id,dati.rows.item(i).titolo, dati.rows.item(i).foto, dati.rows.item(i).datains, dati.rows.item(i).lat, dati.rows.item(i).lon);
+		}
+		newid = dati.rows.item(0).id;
+	}
+	
+	aggiungoRighe("#page-home");
+}
+
+function buildRiga(rid,rtitolo,rimage,rdatains,rlat,rlon) {
+	datiRiga += "<li class='table-view-cell media' id='item" + rid + "'>"
+				+ "<div class='slider'>"
+				+ "    <div class='slide-group'>"
+				+ "       <div class='slide'>"	
+		        + "	    <img class='media-object pull-left' src='" + rimage + "'>"
+				+ "	    <div class='media-body'>"
+				+ "                <p><span class='titolo'>" + rtitolo + "</p>"
+				+ "                <p>Lat:<span class='lat'>" + rlat + "</span> Long: <span class='long'>" + rlon + "</span></p>"
+				+ "	    </div>"
+				+ " 	    <div class='datains'>"
+		        + "            <p>" + rdatains + "</p>"
+		        + "         </div>"		
+				+ "      </div>"
+				+ "       <div class='slide'>"
+				+ "	    <div class='gestione'>"
+				+ "		  <div class='indietro'>"
+				+ "		     <span class='icon icon-left-nav'></span>"
+				+ "		  </div>"
+				+ "       <div class='upload'>"
+				+ "          <a href='#item" + rid + "'><span class='icon icon-share'></span></a>"
+				+ "       </div>"
+				+ "		  <div class='operazioni'>"
+				+ "		     <a href='#item" + rid + "'><span class='icon icon-trash'></span></a>"
+				+ "		  </div>"   
+				+ "	    </div>"
+		        + "         <div class='status'></div>"
+				+ "     </div>"
+				+ "    </div>"   
+				+ "</div>"
+				+ "</li>";				
+}
+
+
+function cancelloRiga (indice) {	
+	//showAlert('Value ' + indice);
+	var idriga = itemdel.replace('#item','');
+	db.transaction(		
+	  function (tx) {
+		tx.executeSql("DELETE FROM SEGNALAZIONI WHERE id = ?", [idriga]);		  
+	  },
+	  onDbError,
+	  function () {
+        if (isset(okbtn)) {
+        	$(itemdel).remove();
+	  }       
+	);
+}
+
+
+//-------------------------------------------------
+// CHECK ACTIVE CONNECTIONS			    
+//-------------------------------------------------
+
+function checkConnessione() {
+	
+	var networkstate = navigator.connection.type;
+	
+	var stato = {};
+    stato[Connection.UNKNOWN]  = 'Connessione sconosciuta';
+    stato[Connection.ETHERNET] = 'Connessione Ethernet';
+    stato[Connection.WIFI]     = 'Connessione WiFi';
+    stato[Connection.CELL_2G]  = 'Connessione Cell 2G';
+    stato[Connection.CELL_3G]  = 'Connessione Cell 3G';
+    stato[Connection.CELL_4G]  = 'Connessione Cell 4G';
+    stato[Connection.CELL]     = 'Connessione Cell generica';
+    stato[Connection.NONE]     = 'Nessuna connessione';
+	
+	//alert(networkstate);
+	
+	if (networkstate == 'none') {
+		return 0;
+	} else {
+		return 1;
+	}
+	
+}
+
+
+//-------------------------------------------------
+// PHOTO SETTINGS				    
+//-------------------------------------------------
+
+$(".pulsanti .fotocamera").on("touchend", function (){
+	
+	var options = {
+		quality: 50,
+		sourceType : Camera.PictureSourceType.CAMERA,
+		destinationType : Camera.DestinationType.FILE_URI		
+	}
+	
+	navigator.camera.getPicture(onCameraSuccess, onCameraError, options);
+	
+});
+
+function onCameraSuccess(imgURI) {
+	$("#noteimg").attr("src", imgURI);
+	checkGeo();
+}
+
+function onCameraError(error) {
+	showAlert("Camera error" + err.code);	
+}
+
+
+$("#savenote").on("touchend", function (e) {
+	e.preventDefault();
+	var d = new Date();
+	var dataoggi = d.getDate() + "/" + d.getMonth() + 1; 
+	note.titolo = $("input:text[name=titolo]").val();
+	note.foto = $("#noteimg").attr("src");
+	note.latitudine = $(".coordinate .lat").text();
+	note.longitudine = $(".coordinate .lon").text();
+	note.datains = dataoggi;
+	
+	if (note.titolo != '' && note.foto != 'img/noimages.png' ) {
+		aggiungoRiga();
+	} else {
+		showAlert("Insert missing data");
+	}
+	
+});
+
+function aggiungoRiga() {
+	db.transaction(		
+	  function (tx) {
+		tx.executeSql("INSERT INTO SEGNALAZIONI (titolo, foto,datains,lat,lon,segnalata) VALUES (?,?,?,?,?,?)", [note.titolo, note.foto, note.datains, note.latitudine, note.longitudine, '0'])		  
+	  },
+	  onDbError,
+	  function () {
+	  	showAlert("Photo saved");
+	  	appendRow(note.titolo, note.foto, note.datains, note.latitudine, note.longitudine);  	
+		$("input:text[name=titolo]").val('');
+		$("#noteimg").attr("src", 'img/noimages.png');
+		$(".coordinate .lat").text('');
+		$(".coordinate .lon").text('');
+	  }       
+	);
+}
+
+function appendRow (title, image, datains, lat, lon) {
+	newid++;
+	datiRiga = '';
+	buildRiga(newid,title, image, datains, lat, lon);
+	$("#page-home ul").prepend(datiRiga);
+}
+
+//-------------------------------------------------
+// REPORTED SETTIGNS				    
+//-------------------------------------------------
+				    
+function caricoSegnalati(){
+	$("#page-segnalati ul li").remove();
+	showToast("Caricamento ....", "2000");
+	db.transaction(mostroSegnalati);
+}
+				    
+function mostroSegnalati(tx){
+	tx.executeSql("SELECT * FROM SEGNALAZIONI WHERE segnalata=? ORDER by id DESC", ['1'], onSegnalatiSuccess, onDbError);			
+}
+
+function onSegnalatiSuccess(tx,results) {	
+	var lensegnalati = results.rows.length;
+	datiRiga = '';
+	if (lensegnalati!=0) {
+		for(var i=0; i<lensegnalati; i++) {
+			buildRiga(results.rows.item(i).id,results.rows.item(i).titolo, results.rows.item(i).foto, results.rows.item(i).datains, results.rows.item(i).lat, results.rows.item(i).lon);
+		}                        
+	}  else {
+		datiRiga = "<li class='table-view-cell media'>Nessun dato segnalato</li>";
+	}
+	aggiungoRighe("#page-segnalati");
+}
+
+
+function aggiungoRighe(idpagina) {
+	$(idpagina + " ul").append(datiRiga);	
+} 
+
+
+
+//-------------------------------------------------
+// GEOLOCATION SETTINGS			    
+//-------------------------------------------------
+
+function checkGeo() {
+	showToast("Localizzazione in corso", "5000");
+	navigator.geolocation.getCurrentPosition(onGeoOk, onGeoError, {timeout: 20000, enableHighAccuracy: true});	
+}
+
+function onGeoError(err) {
+  showAlert("Non sono riuscito a recuperare la posizione");	
+}
+
+function onGeoOk (posizione) {
+	 
+	 var lat = posizione.coords.latitude;
+	 var lon = posizione.coords.longitude;
+	 
+	 $(".coordinate .lat").html(lat.toFixed(2));
+	 $(".coordinate .lon").html(lon.toFixed(2));
+	 
+	 showMap(lat,lon);	 	 	
+} 
+
+function showMap(lat,lon) {
+
+    var currentposition = new google.maps.LatLng(lat,lon)
+    var mapoption = {
+	                 zoom: 10,
+    	             center: currentposition,
+        	         mapTypeId: google.maps.MapTypeId.ROADMAP
+                	};                
+
+    var map = new google.maps.Map(document.getElementById("mappa"), mapoption);                
+
+    var marker = new google.maps.Marker({
+                     position: currentposition,
+                     map: map
+                 }); 
+}
+
+//-------------------------------------------------
+// MESSAGES SETTINGS			    
+//-------------------------------------------------
+
+function showToast(msg,durata) {
+	$("#pages").css("opacity", "0.2");
+	$("#toast .msg p").text(msg);
+    $("#toast").show().delay(durata).fadeOut("fast", function () {$("#pages").css("opacity", "1");});				    
+} 
+
+//-------------------------------------------------
+// ALERT & CONFIRM			    
+//-------------------------------------------------
+function showAlert(msg,okbtn) {
+	navigator.notification.alert(
+		msg, //message
+		alertOk, //callback
+		'Parchi Sicuri', //title
+		okbtn //label
+	);
+}
+
+function alertOk() {
+
+}
+
+function showConfirmCancellazione(msg,okbtn,cancelbtn) {
+	navigator.notification.confirm(
+		msg, //message
+		cancelloRiga, //callback
+		'Parchi Sicuri', //title
+		[cancelbtn,okbtn] //label
+	);
+}
+
+});
+                
+</script>
+</head>
+
+<body>
+	<header style="background-color: green" class="bar bar-nav">
+		<img src="img/icon_parchisicuri.png" style="float:left; height:35px; margin-top: 3px;">
+		<h1 class="title">Parchi Sicuri</h1>
+	</header>
+        
+	<nav class="bar bar-tab">
+		<a class="tab-item active" href="#page-home" data-ignore="push">
+            <span class="icon icon-home"></span>
+            <span class="tab-label">Home</span>
+		</a>
+		<a class="tab-item" href="#page-foto" data-ignore="push">
+            <span class="icon glyphicon glyphicon-camera"/></span>
+            <span class="tab-label">Photo</span>
+		</a>
+		<a class="tab-item" href="#page-segnalati" data-ignore="push">
+            <span class="icon icon-star-filled"></span>
+           	<span class="tab-label">Reported</span>
+		</a>
+		<a class="tab-item" href="#page-cerca" data-ignore="push">
+            <span class="icon icon-person"></span>
+           	<span class="tab-label">Settings</span>
+		</a>
+	</nav>
+        
+   	<!-- Wrap all non-bar HTML in the .content div (this is actually what scrolls) -->
+	<div class="content">
+   	
+	<div id="pages">
+
+		<!--home-->
+		<div id="page-home" class="current">
+		  	<div class="content-padded">
+				<p>Last safe parks reported</p>
+			</div>	
+			<!-- modifico il file css togliendo sfondo nero a .slider, il padding dx a table-view-cell, e aumentando la dimensione del carattere di .slide a 18 da 14-->
+		    <ul class="table-view">    
+		    </ul>
+		</div>
+
+		<!--foto-->
+		<div id="page-foto">
+			<div class="content-padded">                     
+				<p>Take a picture to send</p>
+				<input type="text" placeholder="Titolo foto" name="titolo">
+				<div class="pulsanti">
+					<div class="fotocamera">
+						<span class="glyphicon glyphicon-camera"></span>
+					</div>
+                    <div class="coordinate">
+                    	<p><span class="glyphicon glyphicon-map-marker"></span> <span class="lat">-</span> :: <span class="lon">-</span></p>
+					</div>
+				</div>
+				<img src="img/noimages.png" id="noteimg" width="110px" height="110px">
+				<input type="submit" class="btn btn-positive btn-block" id="savenote" value="Salva">
+				<div id="mappa">Maps</div>
+			</div>
+		</div>
+		
+		<!--Segnalati-->
+		<div id="page-segnalati">
+			<div class="content-padded">
+				<p>Reported Photos</p>
+			</div>
+			<ul class="table-view">			
+			</ul>
+		</div>
+		
+		<!--Settings-->                
+		<div id="page-cerca">
+			<p class="content-padded">Set data</p>
+			<form class="input-group">
+				<div class="input-row">
+					<label>Name</label>
+					<input type="text" placeholder="Your Name">
+				</div>
+				<div class="input-row">
+					<label>Email</label>
+					<input type="email" placeholder="name@domain.com">
+				</div>
+				<div class="input-row">
+					<label>Username</label>
+					<input type="text" placeholder="Type an username..">
+				</div>
+			</form>
+			<p class="content-padded">
+				<input type="submit" class="btn btn-positive btn-block" id="savesetting" value="Salva">
+			</p>
+		</div>
+
+	</div> <!--pages-->
+            
+	</div>
+	<div id="toast"><div class="msg"><p>Absolute position</p></div></div>
+ </body>
+</html>
